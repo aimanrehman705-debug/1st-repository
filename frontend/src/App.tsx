@@ -23,19 +23,24 @@ export default function App() {
         <Navbar />
         <main className="p-4 space-y-4">
           <Routes>
-            {!user && <>
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="*" element={<Navigate to="/login" />} />
-            </>}
-            {user && <>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/messages" element={<Messages />} />
-              <Route path="/templates" element={<Templates />} />
-              {isAdmin && <Route path="/users" element={<Users />} />}
-              {isAdmin && <Route path="/logs" element={<Logs />} />}
-              <Route path="*" element={<Navigate to="/" />} />
-            </>}
+            {!user && (
+              <>
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="*" element={<Navigate to="/login" />} />
+              </>
+            )}
+            {user && (
+              <>
+                <Route path="/" element={<Navigate to="/dashboard" />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/messages" element={<Messages />} />
+                <Route path="/templates" element={<Templates />} />
+                {isAdmin && <Route path="/users" element={<Users />} />}
+                {isAdmin && <Route path="/logs" element={<Logs />} />}
+                <Route path="*" element={<Navigate to="/dashboard" />} />
+              </>
+            )}
           </Routes>
         </main>
       </div>

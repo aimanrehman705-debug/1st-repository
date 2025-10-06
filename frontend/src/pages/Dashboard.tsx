@@ -1,77 +1,76 @@
-import Card from '@components/Card'
 import { useEffect, useState } from 'react'
-import api from '@services/api'
 import { useAuth } from '@hooks/useAuth'
-import { Bar } from 'react-chartjs-2'
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js'
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
+import DashboardCard from '@components/DashboardCard'
+import ChartMessages from '@components/ChartMessages'
+import { Users as UsersIcon, MessageSquare, Clock } from 'lucide-react'
+import { collection, onSnapshot, query, where, Timestamp } from 'firebase/firestore'
+import { db } from '@services/firebase'
+import { Card } from '@components/ui/card'
 
 export default function Dashboard() {
   const { isAdmin } = useAuth()
-  const [stats, setStats] = useState<{ totalUsers: number; sentToday: number; scheduledPending: number }>({ totalUsers: 0, sentToday: 0, scheduledPending: 0 })
+  const [totalUsers, setTotalUsers] = useState(0)
+  const [sentToday, setSentToday] = useState(0)
+  const [scheduledPending, setScheduledPending] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!isAdmin) return
-    async function load() {
-      try {
-        const [usersRes, allRes] = await Promise.all([
-          api.get('/users'),
-          api.get('/messages/all'),
-        ])
-        const allMessages = allRes.data as any[]
-        const today = new Date(); today.setHours(0,0,0,0)
-        const sentToday = allMessages.filter(m => m.status === 'sent' && new Date(m.sentAt || m.createdAt) >= today).length
-        const scheduledPending = allMessages.filter(m => m.status === 'scheduled').length
-        setStats({ totalUsers: usersRes.data.length, sentToday, scheduledPending })
-      } catch {}
-    }
-    load()
-  }, [])
 
-  const data = {
-    labels: ['Users', 'Sent Today', 'Scheduled'],
-    datasets: [{ label: 'Count', data: [stats.totalUsers, stats.sentToday, stats.scheduledPending], backgroundColor: '#25D366' }]
-  }
+    const unsubs: Array<() => void> = []
+
+    const usersUnsub = onSnapshot(collection(db, 'users'), (snap) => {
+      setTotalUsers(snap.size)
+    })
+    unsubs.push(usersUnsub)
+
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    const sentUnsub = onSnapshot(
+      query(collection(db, 'messages'), where('sentAt', '>=', Timestamp.fromDate(start))),
+      (snap) => {
+        let count = 0
+        snap.forEach((doc) => {
+          const data = doc.data() as any
+          if (data.status === 'sent') count += 1
+        })
+        setSentToday(count)
+      }
+    )
+    unsubs.push(sentUnsub)
+
+    const scheduledUnsub = onSnapshot(
+      query(collection(db, 'messages'), where('status', '==', 'scheduled')),
+      (snap) => setScheduledPending(snap.size)
+    )
+    unsubs.push(scheduledUnsub)
+
+    const timer = setTimeout(() => setLoading(false), 300) // brief delay for smooth UX
+
+    return () => {
+      unsubs.forEach((u) => u())
+      clearTimeout(timer)
+    }
+  }, [isAdmin])
 
   if (!isAdmin) {
     return (
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
+        <Card className="p-4">
           <h3 className="mb-2 text-lg font-semibold">Welcome to WhatsX</h3>
-          <p className="text-sm text-gray-600">Use the Messages page to send or schedule messages. Templates are available for reuse.</p>
+          <p className="text-sm text-gray-600 dark:text-gray-300">You don't have admin access. Contact an administrator for access.</p>
         </Card>
       </div>
     )
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <Card>
-        <div className="text-sm text-gray-600">Total Users</div>
-        <div className="text-3xl font-semibold">{stats.totalUsers}</div>
-      </Card>
-      <Card>
-        <div className="text-sm text-gray-600">Messages Sent Today</div>
-        <div className="text-3xl font-semibold">{stats.sentToday}</div>
-      </Card>
-      <Card>
-        <div className="text-sm text-gray-600">Scheduled Pending</div>
-        <div className="text-3xl font-semibold">{stats.scheduledPending}</div>
-      </Card>
+    <div className="grid gap-4 lg:grid-cols-3">
+      <DashboardCard title="Total Users" icon={<UsersIcon size={16} />} value={totalUsers} loading={loading} />
+      <DashboardCard title="Messages Sent Today" icon={<MessageSquare size={16} />} value={sentToday} loading={loading} />
+      <DashboardCard title="Scheduled Pending" icon={<Clock size={16} />} value={scheduledPending} loading={loading} />
 
-      <Card className="md:col-span-3">
-        <h3 className="mb-4 text-lg font-semibold">Overview</h3>
-        <Bar data={data} options={{ responsive: true, plugins: { legend: { display: false } } }} />
-      </Card>
+      <ChartMessages />
     </div>
   )
 }

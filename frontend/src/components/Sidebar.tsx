@@ -6,7 +6,7 @@ export default function Sidebar({ isAdmin }: { isAdmin: boolean }) {
   return (
     <aside className="hidden h-full w-64 shrink-0 border-r border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950 md:block">
       <nav className="space-y-1">
-        <NavLink className={({ isActive }) => `${linkBase} ${isActive ? 'bg-gray-100 dark:bg-gray-800 font-medium' : ''}`} to="/">
+        <NavLink className={({ isActive }) => `${linkBase} ${isActive ? 'bg-gray-100 dark:bg-gray-800 font-medium' : ''}`} to="/dashboard">
           <LayoutDashboard size={16} /> Dashboard
         </NavLink>
         <NavLink className={({ isActive }) => `${linkBase} ${isActive ? 'bg-gray-100 dark:bg-gray-800 font-medium' : ''}`} to="/messages">
