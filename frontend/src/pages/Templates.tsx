@@ -1,86 +1,122 @@
-import Card from '@components/Card'
-import Button from '@components/Button'
-import { Table, THead, TBody, TR, TH, TD } from '@components/Table'
-import { useEffect, useState } from 'react'
-import api from '@services/api'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@hooks/useAuth'
-
-interface Template { id: string; name: string; content: string }
+import { Card, CardContent, CardHeader, CardTitle } from '@components/ui/card'
+import Button from '@components/Button'
+import TemplateList, { TemplateItem } from '@components/TemplateList'
+import TemplateModal from '@components/TemplateModal'
+import TemplateForm, { TemplateInput } from '@components/TemplateForm'
+import { db } from '@services/firebase'
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { toast } from 'sonner'
 
 export default function Templates() {
-  const { isAdmin } = useAuth()
-  const [templates, setTemplates] = useState<Template[]>([])
-  const [name, setName] = useState('')
-  const [content, setContent] = useState('')
+  const { isAdmin, user } = useAuth()
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<TemplateItem | null>(null)
+  const [input, setInput] = useState<TemplateInput>({ title: '', messageBody: '' })
+  const [templates, setTemplates] = useState<TemplateItem[]>([])
+  const [search, setSearch] = useState('')
 
-  async function load() {
-    const res = await api.get('/templates')
-    setTemplates(res.data)
+  useEffect(() => {
+    const q = query(collection(db, 'templates'), orderBy('createdAt', 'desc'))
+    const unsub = onSnapshot(q, (snap) => {
+      const list: TemplateItem[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
+      setTemplates(list)
+    })
+    return () => unsub()
+  }, [])
+
+  const filtered = useMemo(() => {
+    const s = search.trim().toLowerCase()
+    if (!s) return templates
+    return templates.filter((t) => t.title?.toLowerCase().includes(s))
+  }, [templates, search])
+
+  function openCreate() {
+    setEditing(null)
+    setInput({ title: '', messageBody: '' })
+    setOpen(true)
   }
 
-  useEffect(() => { load() }, [])
-
-  async function create() {
-    await api.post('/templates', { name, content })
-    setName(''); setContent('');
-    await load()
+  function openEdit(t: TemplateItem) {
+    setEditing(t)
+    setInput({ title: t.title || '', messageBody: t.messageBody || '' })
+    setOpen(true)
   }
 
-  async function update(id: string) {
-    await api.put(`/templates/${id}`, { name, content })
-    setName(''); setContent('');
-    await load()
+  async function save() {
+    if (!input.title.trim() || !input.messageBody.trim()) {
+      toast.error('Title and message are required')
+      return
+    }
+    try {
+      if (editing) {
+        await updateDoc(doc(db, 'templates', editing.id), {
+          title: input.title.trim(),
+          messageBody: input.messageBody.trim(),
+          updatedAt: serverTimestamp(),
+        })
+        toast.success('Template updated')
+      } else {
+        await addDoc(collection(db, 'templates'), {
+          title: input.title.trim(),
+          messageBody: input.messageBody.trim(),
+          createdBy: user?.uid || 'unknown',
+          createdAt: serverTimestamp(),
+        })
+        toast.success('Template created')
+      }
+      setOpen(false)
+    } catch (e) {
+      toast.error('Failed to save template')
+    }
   }
 
-  async function remove(id: string) {
-    await api.delete(`/templates/${id}`)
-    await load()
+  async function confirmDelete(t: TemplateItem) {
+    if (!isAdmin) return
+    const ok = window.confirm(`Delete template "${t.title}"?`)
+    if (!ok) return
+    try {
+      await deleteDoc(doc(db, 'templates', t.id))
+      toast.success('Template deleted')
+    } catch (e) {
+      toast.error('Failed to delete template')
+    }
+  }
+
+  function useTemplate(t: TemplateItem) {
+    // For now, navigate users to Messages page with suggestion (could implement context/global state)
+    toast.info('Template copied to composer. Go to Messages to paste/use it.')
+    navigator.clipboard?.writeText(t.messageBody || '')
   }
 
   return (
     <div className="space-y-4">
-      {isAdmin && (
-        <Card>
-          <h3 className="mb-3 text-lg font-semibold">Create / Update Template</h3>
-          <div className="grid gap-3 md:grid-cols-3">
-            <input className="rounded-md border px-3 py-2" placeholder="Name" value={name} onChange={e => setName(e.target.value)} />
-            <input className="md:col-span-2 rounded-md border px-3 py-2" placeholder="Content (Hello {{name}} at {{time}})" value={content} onChange={e => setContent(e.target.value)} />
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button onClick={create}>Save</Button>
-          </div>
-        </Card>
-      )}
-
       <Card>
-        <h3 className="mb-3 text-lg font-semibold">Templates</h3>
-        <Table>
-          <THead>
-            <TR>
-              <TH>Name</TH>
-              <TH>Content</TH>
-              <TH>Actions</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {templates.map(t => (
-              <TR key={t.id}>
-                <TD>{t.name}</TD>
-                <TD className="font-mono text-xs">{t.content}</TD>
-                <TD className="space-x-2">
-                  {isAdmin && (
-                    <>
-                      <Button onClick={() => { setName(t.name); setContent(t.content) }}>Edit</Button>
-                      <Button className="bg-red-600 hover:bg-red-700" onClick={() => remove(t.id)}>Delete</Button>
-                      <Button onClick={() => update(t.id)}>Update</Button>
-                    </>
-                  )}
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <CardHeader className="flex items-center justify-between">
+          <CardTitle>Message Templates</CardTitle>
+          {isAdmin && <Button onClick={openCreate}>Add Template</Button>}
+        </CardHeader>
+        <CardContent>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <input
+              className="w-full max-w-md rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-900"
+              placeholder="Search by title"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <TemplateList templates={filtered} isAdmin={!!isAdmin} onEdit={openEdit} onDelete={confirmDelete} onUse={useTemplate} />
+        </CardContent>
       </Card>
+
+      <TemplateModal open={open} title={editing ? 'Edit Template' : 'Add Template'} onClose={() => setOpen(false)}>
+        <TemplateForm value={input} onChange={setInput} />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button className="bg-gray-200 text-gray-900 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={save}>Save</Button>
+        </div>
+      </TemplateModal>
     </div>
   )
 }
