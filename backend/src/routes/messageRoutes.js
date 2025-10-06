@@ -8,6 +8,10 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/me', listMyMessages);
+router.get('/logs', (req, res, next) => {
+  if (req.user?.role === 'admin') return adminListAllMessages(req, res, next);
+  return listMyMessages(req, res, next);
+});
 router.post('/send', sendMessage);
 router.post('/schedule', scheduleMessage);
 router.post('/upload-csv', uploadCsvAndSend);
