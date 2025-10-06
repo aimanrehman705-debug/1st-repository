@@ -5,8 +5,9 @@ import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Download, Search } from 'lucide-react';
 import { toCsv, truncate, formatDate } from '../utils/helpers';
-import { collection, onSnapshot, orderBy, query, where, getFirestore } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query, where, getFirestore, limit } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
+import type { LogsFilterState } from './LogsFilter';
 
 interface LogItem {
   id: string;
@@ -19,7 +20,7 @@ interface LogItem {
   scheduledFor?: any;
 }
 
-export function MessageLogsTable() {
+export function MessageLogsTable({ filters }: { filters?: LogsFilterState }) {
   const { role, user } = useAuth();
   const [items, setItems] = useState<LogItem[]>([]);
   const [search, setSearch] = useState('');
@@ -28,9 +29,9 @@ export function MessageLogsTable() {
 
   useEffect(() => {
     const db = getFirestore();
-    let q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
+    let q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'), limit(200));
     if (role !== 'admin' && user?.uid) {
-      q = query(collection(db, 'messages'), where('userId', '==', user.uid), orderBy('createdAt', 'desc')) as any;
+      q = query(collection(db, 'messages'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(200)) as any;
     }
     const unsub = onSnapshot(q, (snap) => {
       const rows: LogItem[] = [];
@@ -43,12 +44,29 @@ export function MessageLogsTable() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return items.filter((i) =>
-      (i.recipientName || '').toLowerCase().includes(q) ||
-      (i.phone || '').toLowerCase().includes(q) ||
-      (i.message || '').toLowerCase().includes(q)
-    );
-  }, [items, search]);
+    const fromDate = filters?.from ? new Date(filters.from) : undefined;
+    const toDate = filters?.to ? new Date(filters.to) : undefined;
+    return items.filter((i) => {
+      if (q) {
+        const matchesQuery = (i.recipientName || '').toLowerCase().includes(q) ||
+          (i.phone || '').toLowerCase().includes(q) ||
+          (i.message || '').toLowerCase().includes(q);
+        if (!matchesQuery) return false;
+      }
+      if (filters?.status && i.status !== filters.status) return false;
+      if (filters?.user && role === 'admin' && i.userId !== filters.user) return false;
+      const dateVal = i.createdAt || i.scheduledFor;
+      if (fromDate) {
+        const d = dateVal?.seconds ? new Date(dateVal.seconds * 1000) : new Date(dateVal);
+        if (d < fromDate) return false;
+      }
+      if (toDate) {
+        const d = dateVal?.seconds ? new Date(dateVal.seconds * 1000) : new Date(dateVal);
+        if (d > toDate) return false;
+      }
+      return true;
+    });
+  }, [items, search, filters, role]);
 
   const paged = filtered.slice(page * pageSize, (page + 1) * pageSize);
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;

@@ -26,12 +26,8 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="/messages" element={<Messages />} />
           <Route path="/templates" element={<Templates />} />
-          {role === 'admin' && (
-            <>
-              <Route path="/users" element={<Users />} />
-              <Route path="/logs" element={<Logs />} />
-            </>
-          )}
+          <Route path="/logs" element={<Logs />} />
+          {role === 'admin' && <Route path="/users" element={<Users />} />}
         </Route>
 
         <Route path="*" element={<Navigate to={user ? '/' : '/login'} />} />

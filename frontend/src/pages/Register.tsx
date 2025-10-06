@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { registerWithEmail } from '../services/firebase';
+import { loginWithEmail } from '../services/firebase';
+import api from '../services/api';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -13,7 +14,9 @@ export function Register() {
     e.preventDefault();
     setLoading(true);
     try {
-      await registerWithEmail(email, password);
+      // Create user via backend (ensures Firestore doc + custom claims)
+      await api.post('/auth/register', { email, password });
+      await loginWithEmail(email, password);
       toast.success('Registered');
       navigate('/');
     } catch (err: any) {

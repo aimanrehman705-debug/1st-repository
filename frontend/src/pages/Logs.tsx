@@ -29,7 +29,7 @@ export function Logs() {
 
       <Card>
         <div className="p-4">
-          <MessageLogsTable />
+          <MessageLogsTable filters={filters} />
         </div>
       </Card>
     </div>

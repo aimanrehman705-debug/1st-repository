@@ -44,21 +44,24 @@ export async function sendMessage(req, res, next) {
     const contactList = buildContacts({ contacts, names, recipients: toList });
     if (!contactList.length) return res.status(400).json({ error: 'No recipients provided' });
 
-    let body = message;
+    let templateContent = null;
     if (templateId) {
       const tDoc = await getFirestore().collection(TEMPLATES_COLLECTION).doc(templateId).get();
       if (!tDoc.exists) return res.status(404).json({ error: 'Template not found' });
-      body = renderTemplate(tDoc.data().content, variables || {});
+      templateContent = tDoc.data().content;
     }
 
     const results = [];
     for (const c of contactList) {
-      const result = await sendWhatsAppMessage({ to: c.phone, body, mediaUrl });
+      const bodyFor = templateContent
+        ? renderTemplate(templateContent, { ...(variables || {}), name: c.name || '', phone: c.phone })
+        : message;
+      const result = await sendWhatsAppMessage({ to: c.phone, body: bodyFor, mediaUrl });
       results.push({ to: c.phone, result });
-      await logSingleMessage({ userId: req.user.uid, recipientName: c.name, phone: c.phone, message: body, status: 'sent', result });
+      await logSingleMessage({ userId: req.user.uid, recipientName: c.name, phone: c.phone, message: bodyFor, status: 'sent', result });
     }
 
-    res.json({ ok: true, count: toList.length, results });
+    res.json({ ok: true, count: contactList.length, results });
   } catch (err) {
     next(err);
   }
@@ -72,22 +75,25 @@ export async function scheduleMessage(req, res, next) {
     if (!contactList.length) return res.status(400).json({ error: 'No recipients provided' });
     if (!scheduledFor) return res.status(400).json({ error: 'scheduledFor required' });
 
-    let body = message;
+    let templateContent = null;
     if (templateId) {
       const tDoc = await getFirestore().collection(TEMPLATES_COLLECTION).doc(templateId).get();
       if (!tDoc.exists) return res.status(404).json({ error: 'Template not found' });
-      body = renderTemplate(tDoc.data().content, variables || {});
+      templateContent = tDoc.data().content;
     }
 
     const scheduleDate = new Date(scheduledFor);
     if (Number.isNaN(scheduleDate.getTime())) return res.status(400).json({ error: 'Invalid date' });
 
     for (const c of contactList) {
+      const bodyFor = templateContent
+        ? renderTemplate(templateContent, { ...(variables || {}), name: c.name || '', phone: c.phone })
+        : message;
       await getFirestore().collection(MESSAGES_COLLECTION).add({
         userId: req.user.uid,
         recipientName: c.name || null,
         phone: c.phone,
-        message: body,
+        message: bodyFor,
         status: 'scheduled',
         scheduledFor: scheduleDate,
         mediaUrl: mediaUrl || null,
