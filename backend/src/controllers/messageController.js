@@ -23,12 +23,14 @@ export async function sendMessage(req, res, next) {
 
     const results = [];
     for (const to of uniqueRecipients) {
-      const body = fillTemplate(templateContent, variables?.[to] || variables || {});
+      const perContactVars = variables?.[to] || variables || {};
+      const body = fillTemplate(templateContent, perContactVars);
       const logRef = await firestore.collection('messages').add({
         userId: req.user.uid,
         to,
         text: body,
         mediaUrl: mediaUrl || null,
+        recipientName: perContactVars.name || null,
         status: 'sent',
         createdAt: new Date(),
       });
@@ -66,13 +68,15 @@ export async function scheduleMessage(req, res, next) {
     const batch = firestore.batch();
 
     for (const to of uniqueRecipients) {
-      const body = fillTemplate(templateContent, variables?.[to] || variables || {});
+      const perContactVars = variables?.[to] || variables || {};
+      const body = fillTemplate(templateContent, perContactVars);
       const ref = firestore.collection('messages').doc();
       batch.set(ref, {
         userId: req.user.uid,
         to,
         text: body,
         mediaUrl: mediaUrl || null,
+        recipientName: perContactVars.name || null,
         status: 'scheduled',
         scheduledAt: scheduleTime,
         createdAt: new Date(),
