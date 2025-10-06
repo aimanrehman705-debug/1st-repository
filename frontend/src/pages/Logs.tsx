@@ -1,40 +1,37 @@
+import { Card } from '../components/Card';
+import { LogsFilter, LogsFilterState } from '../components/LogsFilter';
+import { MessageLogsTable } from '../components/MessageLogsTable';
 import { useEffect, useState } from 'react';
 import api from '../services/api';
-import { Card } from '../components/Card';
-
-interface LogItem { id: string; userId: string; recipients: string[]; message: string; status: string; createdAt?: any; scheduledFor?: any }
+import { useAuth } from '../hooks/useAuth';
 
 export function Logs() {
-  const [items, setItems] = useState<LogItem[]>([]);
+  const { role } = useAuth();
+  const [users, setUsers] = useState<Array<{ id: string; email: string }>>([]);
+  const [filters, setFilters] = useState<LogsFilterState>({ query: '', status: '' });
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await api.get('/messages/admin/all');
-        setItems(res.data);
-      } catch {}
-    })();
-  }, []);
+    if (role === 'admin') {
+      api.get('/users').then((res) => setUsers(res.data.map((u: any) => ({ id: u.id, email: u.email }))))
+        .catch(() => {});
+    }
+  }, [role]);
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Logs</h1>
-      <div className="grid gap-3">
-        {items.map((m) => (
-          <Card key={m.id}>
-            <div className="p-4 space-y-1">
-              <div className="text-sm text-gray-500">User: {m.userId}</div>
-              <div><span className="text-sm text-gray-500">To:</span> {m.recipients?.join(', ')}</div>
-              <div className="text-sm whitespace-pre-wrap">{m.message}</div>
-              <div className="text-xs text-gray-500">
-                {m.status}
-                {m.scheduledFor ? ` • scheduled for ${new Date(m.scheduledFor.seconds ? m.scheduledFor.seconds*1000 : m.scheduledFor).toLocaleString()}` : ''}
-                {m.createdAt ? ` • created ${new Date(m.createdAt.seconds ? m.createdAt.seconds*1000 : m.createdAt).toLocaleString()}` : ''}
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
+      <h1 className="text-2xl font-semibold">Message Logs</h1>
+
+      <Card>
+        <div className="p-4">
+          <LogsFilter value={filters} onChange={setFilters} users={role === 'admin' ? users : undefined} />
+        </div>
+      </Card>
+
+      <Card>
+        <div className="p-4">
+          <MessageLogsTable />
+        </div>
+      </Card>
     </div>
   );
 }

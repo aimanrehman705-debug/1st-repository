@@ -13,10 +13,10 @@ export function Layout() {
     { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
     { to: '/messages', label: 'Messages', icon: <MessageSquare size={18} /> },
     { to: '/templates', label: 'Templates', icon: <FileText size={18} /> },
+    { to: '/logs', label: 'Logs', icon: <List size={18} />},
   ];
   if (role === 'admin') {
     links.push({ to: '/users', label: 'Users', icon: <UsersIcon size={18} />});
-    links.push({ to: '/logs', label: 'Logs', icon: <List size={18} />});
   }
 
   return (
@@ -29,6 +29,7 @@ export function Layout() {
             <span>{l.label}</span>
           </Link>
         ))}
+        <div className="mt-6 text-xs text-gray-500">Powered by Firebase</div>
       </aside>
       <main className="min-h-full">
         <header className="flex items-center justify-between border-b border-gray-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/70 backdrop-blur p-3">

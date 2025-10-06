@@ -1,5 +1,5 @@
 import { getFirestore } from '../config/firebase.js';
-import { renderTemplate, sendWhatsAppMessage, logMessage } from '../services/whatsappService.js';
+import { renderTemplate, sendWhatsAppMessage, logMessage, logSingleMessage } from '../services/whatsappService.js';
 
 const MESSAGES_COLLECTION = 'messages';
 const USERS_COLLECTION = 'users';
@@ -12,11 +12,37 @@ function parseRecipients({ recipients, csvContacts }) {
   return Array.from(set).filter(Boolean);
 }
 
+function buildContacts({ contacts, names, recipients }) {
+  // contacts: [{ name, phone }]
+  // names: optional parallel array of names matching recipients
+  const output = [];
+  if (Array.isArray(contacts) && contacts.length) {
+    for (const c of contacts) {
+      if (c?.phone) output.push({ name: c.name || null, phone: String(c.phone).trim() });
+    }
+  } else if (Array.isArray(recipients) && recipients.length) {
+    for (let i = 0; i < recipients.length; i++) {
+      const phone = String(recipients[i]).trim();
+      if (!phone) continue;
+      output.push({ name: names?.[i] || null, phone });
+    }
+  }
+  // de-duplicate by phone
+  const seen = new Set();
+  const deduped = [];
+  for (const c of output) {
+    if (c.phone && !seen.has(c.phone)) { seen.add(c.phone); deduped.push(c); }
+  }
+  return deduped;
+}
+
 export async function sendMessage(req, res, next) {
   try {
-    const { recipients, csvContacts, message, templateId, variables, mediaUrl } = req.body;
+    const { recipients, csvContacts, message, templateId, variables, mediaUrl, contacts, names } = req.body;
+
     const toList = parseRecipients({ recipients, csvContacts });
-    if (!toList.length) return res.status(400).json({ error: 'No recipients provided' });
+    const contactList = buildContacts({ contacts, names, recipients: toList });
+    if (!contactList.length) return res.status(400).json({ error: 'No recipients provided' });
 
     let body = message;
     if (templateId) {
@@ -26,12 +52,11 @@ export async function sendMessage(req, res, next) {
     }
 
     const results = [];
-    for (const to of toList) {
-      const result = await sendWhatsAppMessage({ to, body, mediaUrl });
-      results.push({ to, result });
+    for (const c of contactList) {
+      const result = await sendWhatsAppMessage({ to: c.phone, body, mediaUrl });
+      results.push({ to: c.phone, result });
+      await logSingleMessage({ userId: req.user.uid, recipientName: c.name, phone: c.phone, message: body, status: 'sent', result });
     }
-
-    await logMessage({ userId: req.user.uid, recipients: toList, message: body, status: 'sent', result: results });
 
     res.json({ ok: true, count: toList.length, results });
   } catch (err) {
@@ -41,9 +66,10 @@ export async function sendMessage(req, res, next) {
 
 export async function scheduleMessage(req, res, next) {
   try {
-    const { recipients, csvContacts, message, templateId, variables, scheduledFor } = req.body;
+    const { recipients, csvContacts, message, templateId, variables, scheduledFor, contacts, names, mediaUrl } = req.body;
     const toList = parseRecipients({ recipients, csvContacts });
-    if (!toList.length) return res.status(400).json({ error: 'No recipients provided' });
+    const contactList = buildContacts({ contacts, names, recipients: toList });
+    if (!contactList.length) return res.status(400).json({ error: 'No recipients provided' });
     if (!scheduledFor) return res.status(400).json({ error: 'scheduledFor required' });
 
     let body = message;
@@ -56,14 +82,18 @@ export async function scheduleMessage(req, res, next) {
     const scheduleDate = new Date(scheduledFor);
     if (Number.isNaN(scheduleDate.getTime())) return res.status(400).json({ error: 'Invalid date' });
 
-    await getFirestore().collection(MESSAGES_COLLECTION).add({
-      userId: req.user.uid,
-      recipients: toList,
-      message: body,
-      status: 'scheduled',
-      scheduledFor: scheduleDate,
-      createdAt: new Date(),
-    });
+    for (const c of contactList) {
+      await getFirestore().collection(MESSAGES_COLLECTION).add({
+        userId: req.user.uid,
+        recipientName: c.name || null,
+        phone: c.phone,
+        message: body,
+        status: 'scheduled',
+        scheduledFor: scheduleDate,
+        mediaUrl: mediaUrl || null,
+        createdAt: new Date(),
+      });
+    }
 
     res.status(201).json({ ok: true, scheduledFor: scheduleDate });
   } catch (err) {
