@@ -134,25 +134,54 @@ export async function adminListAllMessages(_req, res, next) {
 
 export async function dashboardStats(_req, res, next) {
   try {
-    const usersSnap = await getFirestore().collection(USERS_COLLECTION).get();
+    const db = getFirestore();
+    const usersSnap = await db.collection(USERS_COLLECTION).get();
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const messagesTodaySnap = await getFirestore()
+    const sevenDaysAgo = new Date(todayStart);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // include today + previous 6 days
+
+    const messagesLast7Snap = await db
       .collection(MESSAGES_COLLECTION)
-      .where('createdAt', '>=', todayStart)
+      .where('createdAt', '>=', sevenDaysAgo)
       .get();
 
-    const scheduledSnap = await getFirestore()
+    const scheduledSnap = await db
       .collection(MESSAGES_COLLECTION)
       .where('status', '==', 'scheduled')
       .get();
 
+    // Bucket by YYYY-MM-DD
+    const buckets = new Map();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sevenDaysAgo);
+      d.setDate(sevenDaysAgo.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      buckets.set(key, 0);
+    }
+
+    messagesLast7Snap.forEach((doc) => {
+      const data = doc.data();
+      const raw = data.createdAt || data.sentAt || data.scheduledFor;
+      if (!raw) return;
+      const dateVal = raw.seconds ? new Date(raw.seconds * 1000) : new Date(raw);
+      const key = dateVal.toISOString().slice(0, 10);
+      if (buckets.has(key)) buckets.set(key, (buckets.get(key) || 0) + 1);
+    });
+
+    const last7Days = Array.from(buckets.entries())
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([date, count]) => ({ date, count }));
+
+    const messagesSentToday = last7Days.find((d) => d.date === todayStart.toISOString().slice(0, 10))?.count || 0;
+
     res.json({
       totalUsers: usersSnap.size,
-      messagesSentToday: messagesTodaySnap.size,
+      messagesSentToday,
       scheduledPending: scheduledSnap.size,
+      last7Days,
     });
   } catch (err) {
     next(err);

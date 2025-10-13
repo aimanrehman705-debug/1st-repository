@@ -38,6 +38,7 @@ export function Templates() {
 
   async function remove(id: string) {
     try {
+      if (!window.confirm('Delete this template? This cannot be undone.')) return;
       await api.delete(`/templates/${id}`);
       toast.success('Deleted');
       await load();

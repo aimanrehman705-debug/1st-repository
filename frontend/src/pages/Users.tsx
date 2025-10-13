@@ -52,6 +52,7 @@ export function Users() {
 
   async function remove(id: string) {
     try {
+      if (!window.confirm('Delete this user? This cannot be undone.')) return;
       await api.delete(`/users/${id}`);
       toast.success('Deleted');
       await load();

@@ -3,8 +3,15 @@ import http from 'http';
 import { spawn } from 'child_process';
 
 // Start the server in a short-lived child process; it will exit early without creds
+// Provide minimal valid service account JSON (empty object was causing admin SDK to throw before we intercept)
+const minimalServiceAccountB64 = Buffer.from(JSON.stringify({
+  project_id: 'test-project',
+  client_email: 'test@test.iam.gserviceaccount.com',
+  private_key: '-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n'
+})).toString('base64');
+
 const child = spawn('node', ['src/server.js'], {
-  env: { ...process.env, FIREBASE_SERVICE_ACCOUNT_B64: 'e30=' },
+  env: { ...process.env, FIREBASE_SERVICE_ACCOUNT_B64: minimalServiceAccountB64 },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 
